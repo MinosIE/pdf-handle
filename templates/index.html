@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF工具箱 - 本地PDF处理</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-inner">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/>
+                        <line x1="9" y1="15" x2="15" y2="15"/>
+                    </svg>
+                    <span>PDF工具箱</span>
+                </div>
+                <p class="header-subtitle">本地处理 · 安全可靠 · 完全免费</p>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-content">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p class="upload-text">拖拽 PDF 文件到此处</p>
+                        <p class="upload-hint">或 <span class="upload-link">点击选择文件</span></p>
+                        <p class="upload-limit">支持多文件上传，单个文件最大 100MB</p>
+                    </div>
+                    <input type="file" id="fileInput" accept=".pdf" multiple hidden>
+                </div>
+
+                <!-- File List -->
+                <div class="file-list" id="fileList"></div>
+            </section>
+
+            <!-- Tips -->
+            <div class="tips-bar" id="tipsBar">
+                <span class="tips-icon">💡</span>
+                <span class="tips-text">上传PDF后，<strong>点击文件卡片选中</strong>即可使用单文件功能。需要合并多个PDF？点击下方「合并模式」一次勾选多个文件。</span>
+            </div>
+
+            <!-- Features Section -->
+            <section class="features-section" id="featuresSection">
+                <h2 class="section-title">选择处理功能</h2>
+                <p class="section-hint" id="sectionHint">请先上传PDF文件</p>
+
+                <div class="features-grid">
+                    <button class="feature-card" data-feature="compress" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>压缩PDF</h3>
+                            <p>减小PDF文件体积，节省存储空间</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="to-word" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                                <line x1="8" y1="7" x2="16" y2="7"/>
+                                <line x1="8" y1="11" x2="14" y2="11"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>PDF转Word</h3>
+                            <p>将PDF转换为可编辑的Word文档</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="extract-images" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <circle cx="8.5" cy="8.5" r="1.5"/>
+                                <polyline points="21 15 16 10 5 21"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>提取图片</h3>
+                            <p>导出PDF中所有嵌入的图片</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="merge" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="10" y1="13" x2="16" y2="13"/>
+                                <line x1="13" y1="10" x2="13" y2="16"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>合并PDF</h3>
+                            <p>将多个PDF合并为一个文件</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="split" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M16 3h5v5"/>
+                                <path d="M8 3H3v5"/>
+                                <path d="M3 16v5h5"/>
+                                <path d="M16 21h5v-5"/>
+                                <line x1="12" y1="3" x2="12" y2="21"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>拆分PDF</h3>
+                            <p>将PDF按页拆分为多个文件</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="extract-text" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="4 7 4 4 20 4 20 7"/>
+                                <line x1="9" y1="20" x2="15" y2="20"/>
+                                <line x1="12" y1="4" x2="12" y2="20"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>提取文字</h3>
+                            <p>提取PDF中的文本内容为TXT</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="to-images" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+                                <line x1="7" y1="2" x2="7" y2="22"/>
+                                <line x1="17" y1="2" x2="17" y2="22"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <line x1="2" y1="7" x2="7" y2="7"/>
+                                <line x1="2" y1="17" x2="7" y2="17"/>
+                                <line x1="17" y1="7" x2="22" y2="7"/>
+                                <line x1="17" y1="17" x2="22" y2="17"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>PDF转图片</h3>
+                            <p>将每页转为高清PNG图片</p>
+                        </div>
+                    </button>
+
+                    <button class="feature-card" data-feature="rotate" disabled>
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                        </div>
+                        <div class="feature-info">
+                            <h3>旋转页面</h3>
+                            <p>旋转PDF页面方向 (90°/180°/270°)</p>
+                        </div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Result Section -->
+            <section class="result-section" id="resultSection" hidden>
+                <div class="result-card" id="resultCard"></div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>所有文件仅在本地处理，不会上传到任何服务器</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" hidden>
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p class="loading-text" id="loadingText">正在处理...</p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Rotation Modal -->
+    <div class="modal-overlay" id="rotateModal" hidden>
+        <div class="modal-card">
+            <h3>选择旋转角度</h3>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" data-angle="90">顺时针 90°</button>
+                <button class="btn btn-secondary" data-angle="180">旋转 180°</button>
+                <button class="btn btn-secondary" data-angle="270">逆时针 90°</button>
+            </div>
+            <button class="btn btn-ghost modal-cancel">取消</button>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
