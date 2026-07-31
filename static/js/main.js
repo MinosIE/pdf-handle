@@ -352,6 +352,15 @@ async function handleFeature(feature) {
         case "rotate":
             showRotateModal(filename);
             break;
+        case "page-sort":
+            showPageEditor("sort", filename);
+            break;
+        case "page-delete":
+            showPageEditor("delete", filename);
+            break;
+        case "watermark":
+            showWatermarkModal(filename);
+            break;
     }
 }
 
@@ -438,6 +447,19 @@ function showResult(data, actionLabel) {
         <div class="result-stat">
           <span>处理页数:</span><strong>${data.page_count} 页</strong>
         </div>`;
+    } else if (data.deleted !== undefined) {
+        statsHtml += `
+        <div class="result-stat">
+          <span>已删除:</span><strong style="color:var(--danger)">${data.deleted} 页</strong>
+        </div>
+        <div class="result-stat">
+          <span>保留:</span><strong>${data.kept} 页</strong>
+        </div>`;
+    } else if (data.text !== undefined) {
+        statsHtml += `
+        <div class="result-stat">
+          <span>水印文字:</span><strong>${escHtml(data.text)}</strong>
+        </div>`;
     }
 
     if (data.size !== undefined) {
@@ -514,6 +536,311 @@ async function handleRotate(angle) {
     await callAPI("/api/rotate", { filename, angle }, `旋转${angle}°`);
 }
 
+// ==================== Page Editor Modal ====================
+let pageEditorState = {
+    mode: "sort", // "sort" | "delete"
+    filename: null,
+    pages: [], // thumbnail data URLs
+    order: [], // current page order (0-based indices)
+    deleted: new Set(), // pages marked for deletion
+    dragIdx: null,
+};
+
+function initPageEditModal() {
+    const el = document.getElementById("pageEditModal");
+
+    document.getElementById("pageEditCancel").addEventListener("click", () => {
+        el.hidden = true;
+    });
+
+    document.getElementById("pageEditConfirm").addEventListener("click", () => {
+        el.hidden = true;
+        confirmPageEdit();
+    });
+
+    el.addEventListener("click", (e) => {
+        if (e.target === el) el.hidden = true;
+    });
+
+    // Mode toggle buttons
+    el.querySelectorAll(".page-mode-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            pageEditorState.mode = btn.dataset.mode;
+            el.querySelectorAll(".page-mode-btn").forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            const title = document.getElementById("pageEditTitle");
+            const hint = document.getElementById("pageEditHint");
+            const confirm = document.getElementById("pageEditConfirm");
+
+            if (pageEditorState.mode === "sort") {
+                title.textContent = "页面排序";
+                hint.textContent = "拖拽缩略图调整页面顺序，拖动后点击确认排序";
+                confirm.textContent = "确认排序";
+            } else {
+                title.textContent = "删除页面";
+                hint.textContent = "点击缩略图选中要删除的页面，然后确认删除";
+                confirm.textContent = "确认删除";
+                confirm.classList.add("btn-danger");
+            }
+            renderThumbnails();
+        });
+    });
+}
+
+async function showPageEditor(mode, filename) {
+    pageEditorState.mode = mode;
+    pageEditorState.filename = filename;
+    pageEditorState.deleted = new Set();
+    pageEditorState.dragIdx = null;
+
+    const el = document.getElementById("pageEditModal");
+    const title = document.getElementById("pageEditTitle");
+    const hint = document.getElementById("pageEditHint");
+    const confirm = document.getElementById("pageEditConfirm");
+
+    if (mode === "sort") {
+        title.textContent = "页面排序";
+        hint.textContent = "拖拽缩略图调整页面顺序，拖动后点击确认排序";
+        confirm.textContent = "确认排序";
+        confirm.classList.remove("btn-danger");
+        el.querySelector(".page-mode-btn[data-mode='sort']").classList.add("active");
+        el.querySelector(".page-mode-btn[data-mode='delete']").classList.remove("active");
+    } else {
+        title.textContent = "删除页面";
+        hint.textContent = "点击缩略图选中要删除的页面，然后确认删除";
+        confirm.textContent = "确认删除";
+        confirm.classList.add("btn-danger");
+        el.querySelector(".page-mode-btn[data-mode='delete']").classList.add("active");
+        el.querySelector(".page-mode-btn[data-mode='sort']").classList.remove("active");
+    }
+
+    el.hidden = false;
+    showLoading("加载缩略图...");
+
+    try {
+        const res = await fetch(`/api/thumbnails/${encodeURIComponent(filename)}`);
+        const data = await res.json();
+
+        if (data.error) {
+            showToast(data.error, "error");
+            el.hidden = true;
+            return;
+        }
+
+        pageEditorState.pages = data.pages;
+        pageEditorState.order = data.pages.map((_, i) => i);
+        pageEditorState.deleted = new Set();
+        renderThumbnails();
+    } catch (err) {
+        showToast("加载失败: " + err.message, "error");
+        el.hidden = true;
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderThumbnails() {
+    const grid = document.getElementById("pageThumbnailGrid");
+    const { pages, order, deleted, mode } = pageEditorState;
+
+    grid.innerHTML = "";
+
+    const displayOrder = mode === "sort" ? order : pages.map((_, i) => i);
+
+    displayOrder.forEach((pageIdx, displayPos) => {
+        const item = document.createElement("div");
+        item.className = "thumbnail-item";
+        item.draggable = mode === "sort";
+        item.dataset.idx = pageIdx;
+
+        if (mode === "delete" && deleted.has(pageIdx)) {
+            item.classList.add("mark-delete");
+        }
+
+        item.innerHTML = `
+            <img src="${pages[pageIdx]}" alt="第 ${pageIdx + 1} 页">
+            <span class="thumbnail-number">${pageIdx + 1}</span>
+            <span class="thumbnail-delete-icon">✕</span>
+        `;
+
+        // Click handler
+        item.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (mode === "delete") {
+                if (deleted.has(pageIdx)) {
+                    deleted.delete(pageIdx);
+                } else {
+                    deleted.add(pageIdx);
+                }
+                renderThumbnails();
+            }
+        });
+
+        // Drag handlers for sort mode
+        if (mode === "sort") {
+            item.addEventListener("dragstart", (e) => {
+                pageEditorState.dragIdx = pageIdx;
+                item.style.opacity = "0.4";
+            });
+            item.addEventListener("dragend", () => {
+                item.style.opacity = "1";
+                document.querySelectorAll(".thumbnail-item").forEach((t) => t.classList.remove("drag-over"));
+            });
+            item.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                item.classList.add("drag-over");
+            });
+            item.addEventListener("dragleave", () => {
+                item.classList.remove("drag-over");
+            });
+            item.addEventListener("drop", (e) => {
+                e.preventDefault();
+                item.classList.remove("drag-over");
+                const targetIdx = parseInt(item.dataset.idx);
+                const srcIdx = pageEditorState.dragIdx;
+                if (srcIdx !== null && srcIdx !== targetIdx) {
+                    const srcPos = order.indexOf(srcIdx);
+                    const tgtPos = order.indexOf(targetIdx);
+                    order.splice(srcPos, 1);
+                    order.splice(tgtPos, 0, srcIdx);
+                    pageEditorState.dragIdx = null;
+                    renderThumbnails();
+                }
+            });
+        }
+
+        grid.appendChild(item);
+    });
+}
+
+async function confirmPageEdit() {
+    const { mode, filename, order, deleted } = pageEditorState;
+    const el = document.getElementById("pageEditModal");
+
+    if (mode === "sort") {
+        const origOrder = pageEditorState.pages.map((_, i) => i);
+        if (JSON.stringify(order) === JSON.stringify(origOrder)) {
+            showToast("页面顺序未改变", "warning");
+            return;
+        }
+        await callAPI("/api/reorder", { filename, order }, "页面排序");
+    } else if (mode === "delete") {
+        if (deleted.size === 0) {
+            showToast("未选择要删除的页面", "warning");
+            return;
+        }
+        if (deleted.size >= pageEditorState.pages.length) {
+            showToast("不能删除所有页面", "warning");
+            return;
+        }
+        const keep = pageEditorState.pages
+            .map((_, i) => i)
+            .filter((i) => !deleted.has(i));
+        await callAPI("/api/delete-pages", { filename, keep }, "删除页面");
+    }
+
+    el.hidden = true;
+}
+
+// ==================== Watermark Modal ====================
+function initWatermarkModal() {
+    const el = document.getElementById("watermarkModal");
+
+    // Cancel
+    el.querySelector(".modal-cancel").addEventListener("click", () => {
+        el.hidden = true;
+    });
+    el.addEventListener("click", (e) => {
+        if (e.target === el) el.hidden = true;
+    });
+
+    // Opacity slider
+    const opacitySlider = document.getElementById("watermarkOpacity");
+    opacitySlider.addEventListener("input", () => {
+        document.getElementById("opacityVal").textContent = opacitySlider.value + "%";
+    });
+
+    // Font size slider
+    const fontSizeSlider = document.getElementById("watermarkFontSize");
+    fontSizeSlider.addEventListener("input", () => {
+        document.getElementById("fontSizeVal").textContent = fontSizeSlider.value;
+    });
+
+    // Rotation slider
+    const rotationSlider = document.getElementById("watermarkRotation");
+    rotationSlider.addEventListener("input", () => {
+        document.getElementById("rotateVal").textContent = rotationSlider.value + "°";
+    });
+
+    // Spacing slider
+    const spacingSlider = document.getElementById("watermarkSpacing");
+    const spacingLabels = ["极密", "较密", "适中", "较疏", "稀疏", "极疏"];
+    spacingSlider.addEventListener("input", () => {
+        document.getElementById("spacingVal").textContent = spacingLabels[spacingSlider.value - 1];
+    });
+
+    // Color dots
+    document.querySelectorAll("#colorOptions .color-dot").forEach((dot) => {
+        dot.addEventListener("click", () => {
+            document.querySelectorAll("#colorOptions .color-dot").forEach((d) => d.classList.remove("selected"));
+            dot.classList.add("selected");
+        });
+    });
+
+    // Apply
+    document.getElementById("watermarkApply").addEventListener("click", async () => {
+        await applyWatermark();
+        el.hidden = true;
+    });
+}
+
+function showWatermarkModal(filename) {
+    document.getElementById("watermarkText").value = "";
+    document.getElementById("watermarkOpacity").value = 20;
+    document.getElementById("opacityVal").textContent = "20%";
+    document.getElementById("watermarkFontSize").value = 60;
+    document.getElementById("fontSizeVal").textContent = "60";
+    document.getElementById("watermarkRotation").value = 0;
+    document.getElementById("rotateVal").textContent = "0°";
+    document.getElementById("watermarkSpacing").value = 3;
+    document.getElementById("spacingVal").textContent = "适中";
+    document.querySelectorAll("#colorOptions .color-dot").forEach((d) => d.classList.remove("selected"));
+    document.querySelector("#colorOptions .color-dot[data-color='#cccccc']").classList.add("selected");
+
+    document.getElementById("watermarkModal").hidden = false;
+    document.getElementById("watermarkModal").dataset.filename = filename;
+}
+
+async function applyWatermark() {
+    const modal = document.getElementById("watermarkModal");
+    const filename = modal.dataset.filename;
+
+    const text = document.getElementById("watermarkText").value.trim();
+    if (!text) {
+        showToast("请输入水印文字", "warning");
+        return;
+    }
+
+    const opacity = parseInt(document.getElementById("watermarkOpacity").value) / 100;
+    const fontSize = parseInt(document.getElementById("watermarkFontSize").value);
+    const color = document.querySelector("#colorOptions .color-dot.selected").dataset.color;
+    const rotation = parseInt(document.getElementById("watermarkRotation").value);
+    const spacing = parseInt(document.getElementById("watermarkSpacing").value);
+
+    await callAPI(
+        "/api/watermark",
+        { filename, text, opacity, fontSize, color, rotation, spacing },
+        "添加水印"
+    );
+}
+
+// Add init calls
+document.addEventListener("DOMContentLoaded", () => {
+    initPageEditModal();
+    initWatermarkModal();
+});
+
 // ==================== Loading ====================
 function showLoading(text) {
     elements.loadingText.textContent = text || "正在处理...";
@@ -559,6 +886,8 @@ document.addEventListener("keydown", (e) => {
     // Escape to close modals
     if (e.key === "Escape") {
         elements.rotateModal.hidden = true;
+        document.getElementById("pageEditModal").hidden = true;
+        document.getElementById("watermarkModal").hidden = true;
         if (state.mergeMode) toggleMergeMode();
     }
     // Delete/Backspace to remove selected file

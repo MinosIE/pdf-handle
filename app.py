@@ -546,6 +546,213 @@ def rotate_pdf():
         return jsonify({"error": f"旋转失败: {str(e)}"}), 500
 
 
+# ==================== 页面缩略图 ====================
+
+
+@app.route("/api/thumbnails/<path:filename>")
+def get_thumbnails(filename):
+    input_path = UPLOAD_DIR / filename
+    if not input_path.exists():
+        return jsonify({"error": "文件不存在"}), 404
+
+    try:
+        doc = fitz.open(str(input_path))
+        results = []
+        for i in range(len(doc)):
+            page = doc[i]
+            pix = page.get_pixmap(dpi=36)
+            import base64
+
+            img_b64 = base64.b64encode(pix.tobytes("png")).decode()
+            results.append(f"data:image/png;base64,{img_b64}")
+        doc.close()
+        return jsonify({"pages": results, "total": len(results)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ==================== 页面排序 ====================
+
+
+@app.route("/api/reorder", methods=["POST"])
+def reorder_pages():
+    data = request.json
+    filename = data.get("filename")
+    order = data.get("order", [])
+
+    if not filename:
+        return jsonify({"error": "未指定文件"}), 400
+    if not isinstance(order, list) or len(order) < 2:
+        return jsonify({"error": "排序参数无效"}), 400
+
+    input_path = UPLOAD_DIR / filename
+    if not input_path.exists():
+        return jsonify({"error": "文件不存在"}), 404
+
+    output_name = f"reordered_{filename}"
+    output_path = OUTPUT_DIR / output_name
+
+    try:
+        src = fitz.open(str(input_path))
+        dst = fitz.open()
+        for idx in order:
+            if 0 <= idx < len(src):
+                dst.insert_pdf(src, from_page=idx, to_page=idx)
+        dst.save(str(output_path), garbage=4, deflate=True)
+        src.close()
+        dst.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "filename": output_name,
+                "page_count": len(order),
+                "size": os.path.getsize(str(output_path)),
+                "size_formatted": format_size(os.path.getsize(str(output_path))),
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"排序失败: {str(e)}"}), 500
+
+
+# ==================== 删除页面 ====================
+
+
+@app.route("/api/delete-pages", methods=["POST"])
+def delete_pages():
+    data = request.json
+    filename = data.get("filename")
+    keep = data.get("keep", [])
+
+    if not filename:
+        return jsonify({"error": "未指定文件"}), 400
+
+    input_path = UPLOAD_DIR / filename
+    if not input_path.exists():
+        return jsonify({"error": "文件不存在"}), 404
+
+    output_name = f"trimmed_{filename}"
+    output_path = OUTPUT_DIR / output_name
+
+    try:
+        src = fitz.open(str(input_path))
+        total = len(src)
+
+        if not keep:
+            return jsonify({"error": "至少保留一页"}), 400
+
+        keep_set = {int(k) for k in keep if 0 <= int(k) < total}
+        if not keep_set:
+            return jsonify({"error": "没有有效页面可保留"}), 400
+
+        dst = fitz.open()
+        for idx in sorted(keep_set):
+            dst.insert_pdf(src, from_page=idx, to_page=idx)
+        dst.save(str(output_path), garbage=4, deflate=True)
+        src.close()
+        dst.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "filename": output_name,
+                "deleted": total - len(keep_set),
+                "kept": len(keep_set),
+                "size": os.path.getsize(str(output_path)),
+                "size_formatted": format_size(os.path.getsize(str(output_path))),
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"删除失败: {str(e)}"}), 500
+
+
+# ==================== 添加水印 ====================
+
+
+@app.route("/api/watermark", methods=["POST"])
+def add_watermark():
+    data = request.json
+    filename = data.get("filename")
+    text = (data.get("text") or "").strip()
+    opacity = float(data.get("opacity", 0.2))
+    font_size = int(data.get("fontSize", 60))
+    color = data.get("color", "#cccccc")
+    rotation = int(data.get("rotation", 0))
+    # PyMuPDF only supports 0, 90, 180, 270 — snap to nearest
+    rotation = round(rotation / 90) * 90 % 360
+    spacing_level = int(data.get("spacing", 3))  # 1-6, 3=default
+
+    if not filename:
+        return jsonify({"error": "未指定文件"}), 400
+    if not text:
+        return jsonify({"error": "请输入水印文字"}), 400
+
+    input_path = UPLOAD_DIR / filename
+    if not input_path.exists():
+        return jsonify({"error": "文件不存在"}), 404
+
+    output_name = f"watermarked_{filename}"
+    output_path = OUTPUT_DIR / output_name
+
+    try:
+        r = int(color[1:3], 16) / 255
+        g = int(color[3:5], 16) / 255
+        b = int(color[5:7], 16) / 255
+
+        # Detect CJK characters to choose correct font
+        has_cjk = any('\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf'
+                      or '\uf900' <= ch <= '\ufaff' or '\u3040' <= ch <= '\u309f'
+                      or '\u30a0' <= ch <= '\u30ff' or '\uac00' <= ch <= '\ud7af'
+                      for ch in text)
+        fontname = "china-ts" if has_cjk else "helv"
+
+        doc = fitz.open(str(input_path))
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            rect = page.rect
+            w, h = rect.width, rect.height
+
+            # Place repeated watermarks in a grid
+            # spacing_level: 1(dense) ~ 6(sparse), controls multiplier
+            text_width_est = len(text) * font_size * 0.5
+            text_height_est = font_size * 1.5
+            density = spacing_level / 3.0  # 1=0.33x(dense) 3=1x(default) 6=2x(sparse)
+            spacing_x = max(text_width_est * (1.0 + density), w / (4 - spacing_level * 0.5))
+            spacing_y = max(text_height_est * (1.5 + density), h / (4 - spacing_level * 0.5))
+
+            y = spacing_y / 2
+            while y < h:
+                x = spacing_x / 2
+                while x < w:
+                    page.insert_text(
+                        fitz.Point(x, y),
+                        text,
+                        fontname=fontname,
+                        fontsize=font_size,
+                        color=(r, g, b),
+                        fill_opacity=opacity,
+                        rotate=rotation,
+                    )
+                    x += spacing_x
+                y += spacing_y
+
+        doc.save(str(output_path), garbage=4, deflate=True)
+        doc.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "filename": output_name,
+                "text": text,
+                "size": os.path.getsize(str(output_path)),
+                "size_formatted": format_size(os.path.getsize(str(output_path))),
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"添加水印失败: {str(e)}"}), 500
+
+
 # ==================== 下载 ====================
 
 
