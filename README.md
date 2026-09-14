@@ -15,6 +15,10 @@
 | PDF转图片 | 每页渲染为高清 PNG 图片（200 DPI） |
 | 旋转页面 | 支持 90° / 180° / 270° 旋转 |
 
+## 截图
+
+![PDF工具箱界面截图](screenshots/shot.png)
+
 ## 技术栈
 
 - 后端：Flask + PyMuPDF + pdf2docx
@@ -29,6 +33,10 @@
 ### 安装与运行
 
 ```bash
+# 方式一：一键启动（自动建 venv、装依赖、起服务）
+bash ./start.sh
+
+# 方式二：手动启动
 # 1. 创建虚拟环境
 python3 -m venv venv
 
@@ -50,7 +58,7 @@ python app.py
 
 ## 使用说明
 
-1. **上传文件**：拖拽 PDF 到上传区域，或点击选择文件（支持多文件，单文件最大 100MB）
+1. **上传文件**：拖拽 PDF 到上传区域，或点击选择文件（支持多文件，单文件最大 300MB）
 2. **选中文件**：点击文件卡片选中（紫色高亮），功能卡片自动激活
 3. **选择功能**：点击功能卡片开始处理，处理完成后可下载结果
 4. **合并模式**：上传 2 个以上文件后，点击「进入合并模式」可多选文件进行合并
@@ -61,7 +69,9 @@ python app.py
 pdf-handle/
 ├── app.py                # Flask 后端
 ├── requirements.txt      # Python 依赖
+├── start.sh              # 一键启动脚本（建 venv + 装依赖 + 起服务）
 ├── README.md
+├── screenshots/          # 功能截图
 ├── templates/
 │   └── index.html        # 前端页面
 ├── static/

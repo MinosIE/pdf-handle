@@ -23,10 +23,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 FILE_EXPIRY = timedelta(hours=2)
-MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+MAX_FILE_SIZE = 300 * 1024 * 1024  # 300MB
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
+
+
+@app.errorhandler(413)
+def request_too_large(e):
+    return jsonify({"error": f"文件过大，单个/批量上传不能超过 {MAX_FILE_SIZE // 1024 // 1024}MB"}), 413
 
 
 def cleanup_old_files():
